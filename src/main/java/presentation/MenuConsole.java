@@ -1,51 +1,58 @@
 package presentation;
 
-import model.*;
-import service.*;
-import util.InputValidator;
+import model.Booking;
+import model.BookingDetail;
+import model.Equipment;
+import model.Room;
+import model.User;
+import service.AdminService;
+import service.AuthService;
+import service.BookingService;
+import service.FeedbackService;
+import service.ReportService;
+import util.Logger;
+import util.NotificationService;
 
-import java.util.*;
-
+import java.io.Console;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+import java.util.regex.Pattern;
 
 public class MenuConsole {
+
     private final Scanner sc = new Scanner(System.in);
+
     private final AuthService authService = new AuthService();
     private final AdminService adminService = new AdminService();
     private final BookingService bookingService = new BookingService();
+    private final FeedbackService feedbackService = new FeedbackService();
+    private final ReportService reportService = new ReportService();
+
     private User currentUser = null;
 
-    // ================== UI HELPERS ==================
-    private void header(String title) {
-        System.out.println("\n=============================================");
-        System.out.printf("|           %-30s  |\n", title);
-        System.out.println("=============================================");
-        System.out.printf("| %-8s | %-30s |\n", "Lua chon", "Ten chuc nang");
-        System.out.println("---------------------------------------------");
-    }
-    private void simpleHeader(String title) {
-        System.out.println("\n=============================================");
-        System.out.printf("|           %-30s  |\n", title);
-        System.out.println("=============================================");
+    // ========================= UI HELPERS =========================
+    private void printLine() {
+        System.out.println("=".repeat(80));
     }
 
-    private void line(String left, String right) {
-        System.out.printf("| %-8s | %-30s |\n", left, right);
+    private void printTitle(String title) {
+        System.out.println();
+        printLine();
+        System.out.printf("%s%n", centerText(title, 80));
+        printLine();
     }
 
-    private void footer() {
-        System.out.println("---------------------------------------------");
-        System.out.print("===> Lua chon: ");
+    private String centerText(String text, int width) {
+        if (text == null) text = "";
+        if (text.length() >= width) return text;
+        int leftPadding = (width - text.length()) / 2;
+        return " ".repeat(leftPadding) + text;
     }
 
-    private int readInt(String prompt) {
-        while (true) {
-            try {
-                System.out.print(prompt);
-                return Integer.parseInt(sc.nextLine());
-            } catch (NumberFormatException e) {
-                System.out.println("Loi: Vui long nhap SO NGUYEN!");
-            }
-        }
+    private void pause() {
+        System.out.print("\nNhan ENTER de tiep tuc...");
+        sc.nextLine();
     }
 
     private String readString(String prompt) {
@@ -53,452 +60,927 @@ public class MenuConsole {
         return sc.nextLine().trim();
     }
 
-    // ================== HE THONG CHINH ==================
+    private String readNonEmpty(String prompt) {
+        while (true) {
+            String input = readString(prompt);
+            if (!input.isEmpty()) return input;
+            System.out.println("[LOI] Khong duoc de trong!");
+        }
+    }
+
+    private int readInt(String prompt) {
+        while (true) {
+            try {
+                System.out.print(prompt);
+                return Integer.parseInt(sc.nextLine().trim());
+            } catch (Exception e) {
+                System.out.println("[LOI] Vui long nhap so nguyen hop le!");
+            }
+        }
+    }
+
+    private int readPositiveInt(String prompt) {
+        while (true) {
+            int value = readInt(prompt);
+            if (value > 0) return value;
+            System.out.println("[LOI] Gia tri phai > 0!");
+        }
+    }
+
+    private String readPhone(String prompt, boolean allowBlank) {
+        String regex = "^\\d{10}$";
+        while (true) {
+            String input = readString(prompt);
+            if (allowBlank && input.isEmpty()) return "";
+            if (Pattern.matches(regex, input)) return input;
+            System.out.println("[LOI] So dien thoai phai gom dung 10 chu so!");
+        }
+    }
+
+    private String readPasswordMasked(String prompt) {
+        Console console = System.console();
+        if (console != null) {
+            char[] pwd = console.readPassword(prompt);
+            return pwd == null ? "" : new String(pwd).trim();
+        }
+
+        // Fallback khi chay trong IDE khong ho tro Console
+        System.out.print(prompt);
+        return sc.nextLine().trim();
+    }
+
+    private String chooseRole() {
+        while (true) {
+            String role = readNonEmpty("Role (ADMIN/SUPPORT): ").toUpperCase();
+            if (role.equals("ADMIN") || role.equals("SUPPORT")) return role;
+            System.out.println("[LOI] Role chi duoc la ADMIN hoac SUPPORT!");
+        }
+    }
+
+    private String choosePrepStatus() {
+        while (true) {
+            System.out.println("[1] PREPARING");
+            System.out.println("[2] READY");
+            System.out.println("[3] MISSING");
+            int choice = readInt("Chon trang thai: ");
+            switch (choice) {
+                case 1: return "PREPARING";
+                case 2: return "READY";
+                case 3: return "MISSING";
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
+            }
+        }
+    }
+
+    // ========================= MAIN FLOW =========================
     public void start() {
         while (true) {
-            header("HE THONG DAT PHONG HOP");
-            line("  [1]", "Dang nhap");
-            line("  [2]", "Dang ky (Employee)");
-            line("  [0]", "Thoat");
-            footer();
+            printTitle("HE THONG QUAN LY DAT PHONG HOP");
+            System.out.println("[1] Dang nhap");
+            System.out.println("[2] Dang ky tai khoan Employee");
+            System.out.println("[0] Thoat");
+            printLine();
 
-            int choice = readInt("");
-            if (choice == 1) handleLogin();
-            else if (choice == 2) handleRegister();
-            else if (choice == 0) {
-                System.out.println("Tam biet!");
-                break;
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    handleLogin();
+                    break;
+                case 2:
+                    handleRegister();
+                    break;
+                case 0:
+                    System.out.println("Tam biet!");
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
             }
         }
     }
 
     private void handleLogin() {
-        String user = readString("Username: ");
-        String pass = readString("Password: ");
-        currentUser = authService.login(user, pass);
+        printTitle("DANG NHAP");
+        String username = readNonEmpty("Username: ");
+        String password = readPasswordMasked("Password: ");
 
-        if (currentUser != null) {
-            System.out.println("Dang nhap thanh cong! Chao " + currentUser.getFullName());
-            switch (currentUser.getRole().toUpperCase()) {
-                case "ADMIN": showAdminMenu(); break;
-                case "EMPLOYEE": showEmployeeMenu(); break;
-                case "SUPPORT": showSupportMenu(); break;
-            }
-        } else {
-            System.out.println("Sai tai khoan hoac mat khau!");
+        currentUser = authService.login(username, password);
+
+        if (currentUser == null) {
+            System.out.println("[LOI] Sai username hoac password!");
+            pause();
+            return;
+        }
+
+        System.out.println("[OK] Dang nhap thanh cong! Xin chao " + currentUser.getFullName());
+
+        String role = currentUser.getRole() == null ? "" : currentUser.getRole().toUpperCase();
+        switch (role) {
+            case "ADMIN":
+                showAdminMenu();
+                break;
+            case "EMPLOYEE":
+                showEmployeeMenu();
+                break;
+            case "SUPPORT":
+                showSupportMenu();
+                break;
+            default:
+                System.out.println("[LOI] Role khong hop le trong he thong!");
+                currentUser = null;
+                pause();
         }
     }
 
     private void handleRegister() {
-        simpleHeader("DANG KY TAI KHOAN");
-        String u = readString("Username: ");
+        printTitle("DANG KY TAI KHOAN EMPLOYEE");
 
-        // Validate mật khẩu ngay tại lúc nhập
-        String p;
-        while (true) {
-            p = readString("Password (Toi thieu 6 ky tu): ");
-            if (p.length() >= 6) {
-                break; // Thỏa mãn điều kiện thì thoát vòng lặp
-            }
-            System.out.println("[LOI] Mat khau qua ngan! Vui long nhap lai.");
-        }
+        User user = new User();
+        user.setUsername(readNonEmpty("Username: "));
+        String password = readPasswordMasked("Password (toi thieu 6 ky tu): ");
+        user.setFullName(readNonEmpty("Ho ten: "));
+        user.setDepartment(readString("Phong ban (co the bo trong): "));
+        user.setPhone(readPhone("So dien thoai 10 chu so (co the bo trong): ", true));
+        user.setRole("EMPLOYEE");
 
-        String name = readString("Ho ten: ");
-
-        User newUser = new User();
-        newUser.setUsername(u);
-        newUser.setFullName(name);
-        newUser.setRole("EMPLOYEE");
-
-        System.out.println(authService.register(newUser, p));
+        String result = authService.register(user, password);
+        System.out.println(result);
+        pause();
     }
 
-    // ================== MENU ADMIN ==================
+    // ========================= ADMIN MENU =========================
     private void showAdminMenu() {
         while (true) {
-            simpleHeader("MENU QUAN TRI (ADMIN)");
-            line("  [1]", "Quan ly phong hop");
-            line("  [2]", "Quan ly thiet bi");
-            line("  [3]", "Tao tai khoan Staff");
-            line("  [4]", "Duyet & Phan cong Booking");
-            line("  [0]", "Dang xuat");
-            footer();
+            printTitle("MENU QUAN TRI - ADMIN");
+            System.out.println("[1] Quan ly phong hop");
+            System.out.println("[2] Quan ly thiet bi");
+            System.out.println("[3] Danh sach nguoi dung");
+            System.out.println("[4] Tao tai khoan Support/Admin");
+            System.out.println("[5] Duyet / Tu choi booking");
+            System.out.println("[6] Bao cao / Phan tich");
+            System.out.println("[0] Dang xuat");
+            printLine();
 
-            int choice = readInt("");
-            if (choice == 0) { currentUser = null; break; }
+            int choice = readInt("Lua chon: ");
             switch (choice) {
-                case 1: renderRoomManagement(); break;
-                case 2: handleEquipmentManager(); break;
-                case 3: handleCreateStaff(); break;
-                case 4: handleAdminApproval(); break;
+                case 1:
+                    handleRoomManagement();
+                    break;
+                case 2:
+                    handleEquipmentManagement();
+                    break;
+                case 3:
+                    renderAllUsers();
+                    break;
+                case 4:
+                    handleCreateStaff();
+                    break;
+                case 5:
+                    handleAdminApproval();
+                    break;
+                case 6:
+                    handleSystemReports();
+                    break;
+                case 0:
+                    currentUser = null;
+                    System.out.println("Da dang xuat!");
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
             }
+        }
+    }
+
+    private void renderAllUsers() {
+        printTitle("DANH SACH NGUOI DUNG");
+
+        List<User> users = adminService.getAllUsers();
+        if (users == null || users.isEmpty()) {
+            System.out.println("Khong co nguoi dung nao.");
+            pause();
+            return;
+        }
+
+        System.out.printf("%-5s | %-20s | %-25s | %-12s | %-15s | %-12s%n",
+                "ID", "Username", "Ho ten", "Role", "Phong ban", "Phone");
+        printLine();
+
+        for (User u : users) {
+            System.out.printf("%-5d | %-20s | %-25s | %-12s | %-15s | %-12s%n",
+                    u.getId(),
+                    safe(u.getUsername()),
+                    safe(u.getFullName()),
+                    safe(u.getRole()),
+                    safe(u.getDepartment()),
+                    safe(u.getPhone()));
+        }
+
+        pause();
+    }
+
+    private void handleCreateStaff() {
+        printTitle("TAO TAI KHOAN SUPPORT / ADMIN");
+
+        User user = new User();
+        user.setUsername(readNonEmpty("Username: "));
+        String password = readPasswordMasked("Password (toi thieu 6 ky tu): ");
+        user.setFullName(readNonEmpty("Ho ten: "));
+        user.setDepartment(readString("Phong ban (co the bo trong): "));
+        user.setPhone(readPhone("So dien thoai 10 chu so (co the bo trong): ", true));
+        user.setRole(chooseRole());
+
+        String result = adminService.createStaffAccount(user, password);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleRoomManagement() {
+        while (true) {
+            printTitle("QUAN LY PHONG HOP");
+            renderRoomTable(adminService.getAllRooms());
+
+            System.out.println("\n[1] Them phong");
+            System.out.println("[2] Sua phong");
+            System.out.println("[3] Xoa phong");
+            System.out.println("[4] Tim phong theo ten");
+            System.out.println("[0] Quay lai");
+            printLine();
+
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    handleAddRoom();
+                    break;
+                case 2:
+                    handleUpdateRoom();
+                    break;
+                case 3:
+                    handleDeleteRoom();
+                    break;
+                case 4:
+                    handleSearchRoom();
+                    break;
+                case 0:
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
+            }
+        }
+    }
+
+    private void handleAddRoom() {
+        printTitle("THEM PHONG MOI");
+
+        String name = readNonEmpty("Ten phong: ");
+        int capacity = readPositiveInt("Suc chua: ");
+        String location = readNonEmpty("Vi tri: ");
+        int status = 1;
+
+        Room room = new Room(0, name, capacity, location, status);
+        String result = adminService.addRoom(room);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleUpdateRoom() {
+        printTitle("SUA THONG TIN PHONG");
+
+        int id = readPositiveInt("Nhap ID phong can sua: ");
+        Room oldRoom = adminService.getRoomById(id);
+
+        if (oldRoom == null) {
+            System.out.println("[LOI] Khong tim thay phong!");
+            pause();
+            return;
+        }
+
+        System.out.println("Thong tin cu:");
+        System.out.println("- Ten phong : " + oldRoom.getRoomName());
+        System.out.println("- Suc chua  : " + oldRoom.getCapacity());
+        System.out.println("- Vi tri    : " + oldRoom.getLocation());
+        System.out.println("- Trang thai: " + (oldRoom.getStatus() == 1 ? "Hoat dong" : "Bao tri"));
+
+        String name = readString("Ten moi (ENTER de giu nguyen): ");
+        String capStr = readString("Suc chua moi (ENTER de giu nguyen): ");
+        String location = readString("Vi tri moi (ENTER de giu nguyen): ");
+        String statusStr = readString("Trang thai moi 1=Hoat dong, 0=Bao tri (ENTER de giu nguyen): ");
+
+        Room updated = new Room();
+        updated.setId(oldRoom.getId());
+        updated.setRoomName(name.isEmpty() ? oldRoom.getRoomName() : name);
+        updated.setCapacity(capStr.isEmpty() ? oldRoom.getCapacity() : Integer.parseInt(capStr));
+        updated.setLocation(location.isEmpty() ? oldRoom.getLocation() : location);
+        updated.setStatus(statusStr.isEmpty() ? oldRoom.getStatus() : Integer.parseInt(statusStr));
+
+        String result = adminService.updateRoom(updated);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleDeleteRoom() {
+        printTitle("XOA PHONG");
+        int id = readPositiveInt("Nhap ID phong can xoa: ");
+        String confirm = readNonEmpty("Ban co chac chan muon xoa? (y/n): ");
+
+        if (!confirm.equalsIgnoreCase("y")) {
+            System.out.println("Da huy thao tac xoa.");
+            pause();
+            return;
+        }
+
+        String result = adminService.deleteRoom(id);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleSearchRoom() {
+        printTitle("TIM KIEM PHONG THEO TEN");
+        String keyword = readNonEmpty("Nhap ten phong can tim: ");
+
+        List<Room> results = adminService.searchRooms(keyword);
+        if (results == null || results.isEmpty()) {
+            System.out.println("Khong tim thay phong phu hop.");
+        } else {
+            renderRoomTable(results);
+        }
+
+        pause();
+    }
+
+    private void renderRoomTable(List<Room> rooms) {
+        if (rooms == null || rooms.isEmpty()) {
+            System.out.println("Khong co du lieu phong.");
+            return;
+        }
+
+        System.out.printf("%-5s | %-22s | %-10s | %-20s | %-12s%n",
+                "ID", "Ten phong", "Suc chua", "Vi tri", "Trang thai");
+        printLine();
+
+        for (Room r : rooms) {
+            System.out.printf("%-5d | %-22s | %-10d | %-20s | %-12s%n",
+                    r.getId(),
+                    safe(r.getRoomName()),
+                    r.getCapacity(),
+                    safe(r.getLocation()),
+                    r.getStatus() == 1 ? "Hoat dong" : "Bao tri");
+        }
+    }
+
+    private void handleEquipmentManagement() {
+        while (true) {
+            printTitle("QUAN LY THIET BI");
+            renderEquipmentTable(adminService.getAllEquipments());
+
+            System.out.println("\n[1] Them thiet bi");
+            System.out.println("[2] Sua thiet bi");
+            System.out.println("[3] Xoa thiet bi");
+            System.out.println("[0] Quay lai");
+            printLine();
+
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    handleAddEquipment();
+                    break;
+                case 2:
+                    handleUpdateEquipment();
+                    break;
+                case 3:
+                    handleDeleteEquipment();
+                    break;
+                case 0:
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
+            }
+        }
+    }
+
+    private void handleAddEquipment() {
+        printTitle("THEM THIET BI");
+        String name = readNonEmpty("Ten thiet bi: ");
+        int total = readPositiveInt("Tong so luong: ");
+        int available = readPositiveInt("So luong san co: ");
+
+        Equipment eq = new Equipment(0, name, total, available);
+        String result = adminService.addEquipment(eq);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleUpdateEquipment() {
+        printTitle("SUA THIET BI");
+
+        int id = readPositiveInt("Nhap ID thiet bi can sua: ");
+        Equipment oldEq = adminService.getEquipmentById(id);
+
+        if (oldEq == null) {
+            System.out.println("[LOI] Khong tim thay thiet bi!");
+            pause();
+            return;
+        }
+
+        System.out.println("Thong tin cu:");
+        System.out.println("- Ten        : " + oldEq.getName());
+        System.out.println("- Tong SL    : " + oldEq.getTotalQty());
+        System.out.println("- San co     : " + oldEq.getAvailableQty());
+
+        String name = readString("Ten moi (ENTER de giu nguyen): ");
+        String totalStr = readString("Tong SL moi (ENTER de giu nguyen): ");
+        String availStr = readString("SL san co moi (ENTER de giu nguyen): ");
+
+        Equipment updated = new Equipment();
+        updated.setId(oldEq.getId());
+        updated.setName(name.isEmpty() ? oldEq.getName() : name);
+        updated.setTotalQty(totalStr.isEmpty() ? oldEq.getTotalQty() : Integer.parseInt(totalStr));
+        updated.setAvailableQty(availStr.isEmpty() ? oldEq.getAvailableQty() : Integer.parseInt(availStr));
+
+        String result = adminService.updateEquipment(updated);
+        System.out.println(result);
+        pause();
+    }
+
+    private void handleDeleteEquipment() {
+        printTitle("XOA THIET BI");
+        int id = readPositiveInt("Nhap ID thiet bi can xoa: ");
+        String confirm = readNonEmpty("Ban co chac chan muon xoa? (y/n): ");
+
+        if (!confirm.equalsIgnoreCase("y")) {
+            System.out.println("Da huy thao tac xoa.");
+            pause();
+            return;
+        }
+
+        String result = adminService.deleteEquipment(id);
+        System.out.println(result);
+        pause();
+    }
+
+    private void renderEquipmentTable(List<Equipment> list) {
+        if (list == null || list.isEmpty()) {
+            System.out.println("Khong co du lieu thiet bi.");
+            return;
+        }
+
+        System.out.printf("%-5s | %-25s | %-12s | %-12s%n",
+                "ID", "Ten thiet bi", "Tong SL", "San co");
+        printLine();
+
+        for (Equipment e : list) {
+            System.out.printf("%-5d | %-25s | %-12d | %-12d%n",
+                    e.getId(),
+                    safe(e.getName()),
+                    e.getTotalQty(),
+                    e.getAvailableQty());
         }
     }
 
     private void handleAdminApproval() {
-        System.out.println("\n--- DANH SACH YEU CAU CHO DUYET (PENDING) ---");
+        printTitle("DUYET / TU CHOI BOOKING");
+
         List<Booking> pendings = bookingService.getAllPending();
-        if (pendings.isEmpty()) {
-            System.out.println("Khong co yeu cau nao dang cho.");
+        if (pendings == null || pendings.isEmpty()) {
+            System.out.println("Khong co booking PENDING nao.");
+            pause();
             return;
         }
 
-        // Hiển thị danh sách Booking đang chờ
-        System.out.printf("%-5s | %-10s | %-10s | %-20s\n", "ID", "User ID", "Room ID", "Thoi gian");
+        renderPendingBookings(pendings);
+
+        int bookingId = readPositiveInt("Nhap ID booking can xu ly: ");
+        System.out.println("[1] Duyet va phan cong Support");
+        System.out.println("[2] Tu choi booking");
+        System.out.println("[0] Huy");
+        int action = readInt("Lua chon: ");
+
+        switch (action) {
+            case 1:
+                List<User> supports = adminService.getAllSupportStaff();
+                if (supports == null || supports.isEmpty()) {
+                    System.out.println("[LOI] He thong chua co tai khoan SUPPORT nao!");
+                    pause();
+                    return;
+                }
+
+                System.out.printf("%-5s | %-20s | %-25s | %-12s%n", "ID", "Username", "Ho ten", "Role");
+                printLine();
+                for (User s : supports) {
+                    System.out.printf("%-5d | %-20s | %-25s | %-12s%n",
+                            s.getId(),
+                            safe(s.getUsername()),
+                            safe(s.getFullName()),
+                            safe(s.getRole()));
+                }
+
+                int supportId = readPositiveInt("Nhap ID staff support: ");
+                String approveResult = adminService.approveBooking(bookingId, supportId);
+                System.out.println(approveResult);
+                break;
+
+            case 2:
+                String rejectResult = adminService.rejectBooking(bookingId);
+                System.out.println(rejectResult);
+                break;
+
+            case 0:
+                System.out.println("Da huy thao tac.");
+                break;
+
+            default:
+                System.out.println("[LOI] Lua chon khong hop le!");
+        }
+
+        pause();
+    }
+
+    private void renderPendingBookings(List<Booking> pendings) {
+        System.out.printf("%-5s | %-8s | %-8s | %-18s | %-18s | %-12s%n",
+                "ID", "UserID", "RoomID", "Start", "End", "Status");
+        printLine();
+
         for (Booking b : pendings) {
-            System.out.printf("%-5d | %-10d | %-10d | %s -> %s\n",
-                    b.getId(), b.getUserId(), b.getRoomId(), b.getStartTime(), b.getEndTime());
-        }
-
-        int bId = readInt("\nNhap ID Booking muon duyet: ");
-
-        // --- BUOC QUAN TRONG: Hien thi danh sach Staff Support ---
-        System.out.println("\n--- DANH SACH NHAN VIEN HO TRO (SUPPORT) ---");
-        System.out.printf("%-5s | %-20s | %-15s\n", "ID", "Ho Ten", "Vai tro");
-        System.out.println("----------------------------------------------");
-
-        // Bạn cần viết thêm hàm getAllSupportStaff trong AdminService
-        List<User> supportList = adminService.getAllSupportStaff();
-
-        if (supportList.isEmpty()) {
-            System.out.println("(!) Canh bao: Chua co tai khoan SUPPORT nao trong he thong!");
-        } else {
-            for (User s : supportList) {
-                System.out.printf("%-5d | %-20s | %-15s\n",
-                        s.getId(), s.getFullName(), s.getRole());
-            }
-        }
-        System.out.println("----------------------------------------------");
-
-        int sId = readInt("Nhap ID Staff ho tro tu danh sach tren: ");
-
-        if (bookingService.approveAndAssign(bId, sId)) {
-            System.out.println("Da duyet va phan cong cho Staff ID: " + sId);
-        } else {
-            System.out.println("That bai! Vui long kiem tra lai ID Booking hoac Staff.");
+            System.out.printf("%-5d | %-8d | %-8d | %-18s | %-18s | %-12s%n",
+                    b.getId(),
+                    b.getUserId(),
+                    b.getRoomId(),
+                    safe(b.getStartTime()),
+                    safe(b.getEndTime()),
+                    safe(b.getStatus()));
         }
     }
 
-    // ================== MENU EMPLOYEE ==================
+    private void handleSystemReports() {
+        while (true) {
+            printTitle("BAO CAO / PHAN TICH");
+            System.out.println("[1] Phan tich tan suat su dung phong");
+            System.out.println("[2] Xuat bao cao chi phi booking");
+            System.out.println("[0] Quay lai");
+            printLine();
+
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    reportService.analyzeUsage();
+                    pause();
+                    break;
+                case 2:
+                    int bookingId = readPositiveInt("Nhap ID booking: ");
+                    reportService.exportCostReport(bookingId);
+                    pause();
+                    break;
+                case 0:
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
+            }
+        }
+    }
+
+    // ========================= EMPLOYEE MENU =========================
     private void showEmployeeMenu() {
         while (true) {
-            header("MENU NHAN VIEN (EMPLOYEE)");
-            line("  [1]", "Xem phong trong");
-            line("  [2]", "Tim kiem phong (Checklist)"); // Thêm nút
-            line("  [3]", "Dat phong moi");
-            line("  [4]", "Lich su dat phong");
-            line("  [5]", "Huy yeu cau PENDING (Checklist)"); // Thêm nút
-            line("  [6]", "Cap nhat ho so (Checklist)"); // Thêm nút
-            line("  [0]", "Dang xuat");
-            footer();
+            printTitle("MENU NHAN VIEN - EMPLOYEE");
+            System.out.println("[1] Xem danh sach phong hop");
+            System.out.println("[2] Tim kiem phong theo ten");
+            System.out.println("[3] Dat phong moi");
+            System.out.println("[4] Xem lich su booking cua toi");
+            System.out.println("[5] Huy booking PENDING");
+            System.out.println("[6] Cap nhat ho so ca nhan");
+            System.out.println("[7] Gui feedback sau cuoc hop");
+            System.out.println("[0] Dang xuat");
+            printLine();
 
-            int c = readInt("");
-            if (c == 0) { currentUser = null; break; }
-            switch (c) {
-                case 1: renderAvailableRooms(); break;
-                case 2: handleSearchRoom(); break;      // Gọi hàm bạn đã viết
-                case 3: handleBookingRequest(); break;
-                case 4: renderMyHistory(); break;
-                case 5: handleCancelBooking(); break;    // Gọi hàm bạn đã viết
-                case 6: handleUpdateProfile(); break;   // Gọi hàm mới thêm ở mục 1
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    renderAvailableRooms();
+                    pause();
+                    break;
+                case 2:
+                    handleSearchRoom();
+                    break;
+                case 3:
+                    handleBookingRequest();
+                    break;
+                case 4:
+                    renderMyHistory();
+                    pause();
+                    break;
+                case 5:
+                    handleCancelBooking();
+                    break;
+                case 6:
+                    handleUpdateProfile();
+                    break;
+                case 7:
+                    handleSendFeedback();
+                    break;
+                case 0:
+                    currentUser = null;
+                    System.out.println("Da dang xuat!");
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
             }
         }
     }
+
+    private void renderAvailableRooms() {
+        printTitle("DANH SACH PHONG HOP");
+        List<Room> rooms = adminService.getAllRooms();
+
+        if (rooms == null || rooms.isEmpty()) {
+            System.out.println("Khong co phong nao trong he thong.");
+            return;
+        }
+
+        System.out.printf("%-5s | %-22s | %-10s | %-20s | %-12s%n",
+                "ID", "Ten phong", "Suc chua", "Vi tri", "Trang thai");
+        printLine();
+
+        for (Room r : rooms) {
+            System.out.printf("%-5d | %-22s | %-10d | %-20s | %-12s%n",
+                    r.getId(),
+                    safe(r.getRoomName()),
+                    r.getCapacity(),
+                    safe(r.getLocation()),
+                    r.getStatus() == 1 ? "Hoat dong" : "Bao tri");
+        }
+    }
+
     private void handleBookingRequest() {
-        simpleHeader("GUI YEU CAU DAT PHONG");
+        printTitle("DAT PHONG MOI");
 
-        // BƯỚC 1: Hiển thị danh sách phòng kèm sức chứa để người dùng chọn
-        renderAvailableRooms();
+        String start = readNonEmpty("Thoi gian bat dau (yyyy-MM-dd HH:mm): ");
+        String end = readNonEmpty("Thoi gian ket thuc (yyyy-MM-dd HH:mm): ");
 
-        int rId = InputValidator.readInt("Nhap ID phong muon dat: ");
-        int participants = InputValidator.readInt("So nguoi tham gia (De kiem tra suc chua): ");
+        if (bookingService.isUserConflicting(currentUser.getId(), start, end)) {
+            System.out.println("[CANH BAO] Ban da co lich hop trung khung gio nay!");
+            String confirm = readNonEmpty("Ban van muon tiep tuc? (y/n): ");
+            if (!confirm.equalsIgnoreCase("y")) {
+                System.out.println("Da huy thao tac dat phong.");
+                pause();
+                return;
+            }
+        }
 
-        System.out.println("(!) Dinh dang thoi gian: yyyy-MM-dd HH:mm");
-        String start = InputValidator.readNonEmptyString("Thoi gian bat dau : ");
-        String end   = InputValidator.readNonEmptyString("Thoi gian ket thuc: ");
+        List<Room> availableRooms = bookingService.searchAvailableRooms(start, end);
+        if (availableRooms == null || availableRooms.isEmpty()) {
+            System.out.println("[THONG BAO] Khong co phong trong trong khung gio nay.");
+            pause();
+            return;
+        }
 
-        // BƯỚC 2: Chuẩn bị giỏ hàng thiết bị và lấy dữ liệu RAM
+        System.out.println("\nDANH SACH PHONG TRONG:");
+        renderRoomTable(availableRooms);
+
+        int roomId = readPositiveInt("Nhap ID phong muon dat: ");
+        int participants = readPositiveInt("Nhap so nguoi tham gia: ");
+
         List<BookingDetail> details = new ArrayList<>();
-        List<Equipment> tempEqList = adminService.getAllEquipments();
+        List<Equipment> equipments = adminService.getAllEquipments();
 
         while (true) {
-            System.out.print("\nBan co muon thue thiet bi? (1: Co | 0: Xac nhan dat phong): ");
-            int choice = InputValidator.readInt("");
-            if (choice == 0) break;
+            String choose = readNonEmpty("Ban co muon them thiet bi? (y/n): ");
+            if (!choose.equalsIgnoreCase("y")) break;
 
-            System.out.println("\n--- KHO THIET BI (CAP NHAT THEO GIO HANG) ---");
-            System.out.printf("%-5s | %-18s | %-10s\n", "ID", "Ten thiet bi", "San co");
-            System.out.println("-".repeat(45));
-
-            for (Equipment e : tempEqList) {
-                if (e.getAvailableQty() > 0) {
-                    System.out.printf("%-5d | %-18s | %-10d\n",
-                            e.getId(), e.getName(), e.getAvailableQty());
-                }
+            if (equipments == null || equipments.isEmpty()) {
+                System.out.println("Khong co thiet bi nao trong kho.");
+                break;
             }
-            System.out.println("-".repeat(45));
 
-            int eqId = InputValidator.readInt("Nhap ID Thiet bi: ");
-            int qty = InputValidator.readInt("So luong thue: ");
+            System.out.printf("%-5s | %-25s | %-12s%n", "ID", "Ten thiet bi", "San co");
+            printLine();
+            for (Equipment e : equipments) {
+                System.out.printf("%-5d | %-25s | %-12d%n",
+                        e.getId(), safe(e.getName()), e.getAvailableQty());
+            }
 
-            boolean exists = false;
-            for (Equipment e : tempEqList) {
+            int eqId = readPositiveInt("Nhap ID thiet bi: ");
+            int qty = readPositiveInt("Nhap so luong: ");
+
+            Equipment selected = null;
+            for (Equipment e : equipments) {
                 if (e.getId() == eqId) {
-                    exists = true;
-                    if (qty <= 0) {
-                        System.out.println("[LOI] So luong phai lon hon 0!");
-                    } else if (qty > e.getAvailableQty()) {
-                        System.out.println("[LOI] Khong du! Kho chi con: " + e.getAvailableQty());
-                    } else {
-                        // TRỪ TRỰC TIẾP TRÊN RAM ĐỂ VÒNG LẶP SAU HIỆN SỐ MỚI
-                        e.setAvailableQty(e.getAvailableQty() - qty);
-
-                        // Thêm vào danh sách chi tiết (details)
-                        details.add(new BookingDetail(eqId, 0, qty));
-                        System.out.println("[OK] Da them " + qty + " " + e.getName() + " vao gio hang.");
-                    }
+                    selected = e;
                     break;
                 }
             }
-            if (!exists) System.out.println("[LOI] ID thiet bi khong hop le!");
-        }
 
-        // BƯỚC 3: Gửi yêu cầu sang Service
-        System.out.println("\nDang kiem tra dieu kien va luu he thong...");
+            if (selected == null) {
+                System.out.println("[LOI] ID thiet bi khong ton tai!");
+                continue;
+            }
+
+            if (qty > selected.getAvailableQty()) {
+                System.out.println("[LOI] So luong yeu cau vuot qua so luong san co!");
+                continue;
+            }
+
+            details.add(new BookingDetail(eqId, 0, qty));
+            System.out.println("[OK] Da them thiet bi vao yeu cau booking.");
+        }
 
         Booking b = new Booking();
         b.setUserId(currentUser.getId());
-        b.setRoomId(rId);
+        b.setRoomId(roomId);
         b.setStartTime(start);
         b.setEndTime(end);
 
-        // Service sẽ check: Thời gian quá khứ, Trùng lịch, Sức chứa
         String result = bookingService.executeBooking(b, details, participants);
+        System.out.println(result);
 
-        System.out.println("\n" + "=".repeat(45));
-        System.out.println("===> KET QUA: " + result);
-        System.out.println("=".repeat(45));
+        if (result.startsWith("[OK]")) {
+            NotificationService.send("Co booking moi tu user: " + currentUser.getUsername());
+            Logger.log("User " + currentUser.getUsername() + " tao booking moi.");
+        }
 
-        // Log hoạt động
-        util.Logger.log("User " + currentUser.getUsername() + " gui yeu cau dat phong ID " + rId);
+        pause();
     }
 
     private void renderMyHistory() {
-        System.out.println("\n--- LICH SU DAT PHONG CUA BAN ---");
+        printTitle("LICH SU BOOKING CUA TOI");
+
         List<Booking> list = bookingService.getHistoryByUserId(currentUser.getId());
-        System.out.printf("%-5s | %-10s | %-15s | %-10s\n", "ID", "Phong", "Trang thai", "Chuan bi");
+        if (list == null || list.isEmpty()) {
+            System.out.println("Ban chua co booking nao.");
+            return;
+        }
+
+        System.out.printf("%-5s | %-8s | %-18s | %-18s | %-12s | %-12s | %-10s%n",
+                "ID", "RoomID", "Start", "End", "Status", "Prep", "Support");
+        printLine();
+
         for (Booking b : list) {
-            System.out.printf("%-5d | %-10d | %-15s | %-10s\n", b.getId(), b.getRoomId(), b.getStatus(), b.getPrepStatus());
+            System.out.printf("%-5d | %-8d | %-18s | %-18s | %-12s | %-12s | %-10d%n",
+                    b.getId(),
+                    b.getRoomId(),
+                    safe(b.getStartTime()),
+                    safe(b.getEndTime()),
+                    safe(b.getStatus()),
+                    safe(b.getPrepStatus()),
+                    b.getSupportId());
         }
     }
 
-    // ================== MENU SUPPORT ==================
+    private void handleCancelBooking() {
+        renderMyHistory();
+        int bookingId = readPositiveInt("Nhap ID booking muon huy: ");
+        String confirm = readNonEmpty("Ban co chac chan muon huy booking nay? (y/n): ");
+
+        if (!confirm.equalsIgnoreCase("y")) {
+            System.out.println("Da huy thao tac.");
+            pause();
+            return;
+        }
+
+        boolean ok = bookingService.cancelBooking(bookingId, currentUser.getId());
+        if (ok) {
+            System.out.println("[OK] Huy booking thanh cong.");
+            Logger.log("User " + currentUser.getUsername() + " huy booking ID " + bookingId);
+        } else {
+            System.out.println("[LOI] Khong the huy booking. Chi duoc huy booking o trang thai PENDING.");
+        }
+
+        pause();
+    }
+
+    private void handleUpdateProfile() {
+        printTitle("CAP NHAT HO SO CA NHAN");
+
+        System.out.println("Thong tin hien tai:");
+        System.out.println("- Ho ten     : " + safe(currentUser.getFullName()));
+        System.out.println("- Phong ban  : " + safe(currentUser.getDepartment()));
+        System.out.println("- So dien thoai: " + safe(currentUser.getPhone()));
+
+        String fullName = readString("Ho ten moi (ENTER de giu nguyen): ");
+        String department = readString("Phong ban moi (ENTER de giu nguyen): ");
+        String phone = readString("So dien thoai moi 10 chu so (ENTER de giu nguyen): ");
+
+        User updated = new User();
+        updated.setId(currentUser.getId());
+        updated.setUsername(currentUser.getUsername());
+        updated.setRole(currentUser.getRole());
+        updated.setPassword(currentUser.getPassword());
+
+        updated.setFullName(fullName.isEmpty() ? currentUser.getFullName() : fullName);
+        updated.setDepartment(department.isEmpty() ? currentUser.getDepartment() : department);
+
+        if (phone.isEmpty()) {
+            updated.setPhone(currentUser.getPhone());
+        } else {
+            while (!Pattern.matches("^\\d{10}$", phone)) {
+                System.out.println("[LOI] So dien thoai phai gom dung 10 chu so!");
+                phone = readString("Nhap lai so dien thoai: ");
+            }
+            updated.setPhone(phone);
+        }
+
+        boolean ok = authService.updateProfile(updated);
+        if (ok) {
+            currentUser = updated;
+            System.out.println("[OK] Cap nhat ho so thanh cong!");
+        } else {
+            System.out.println("[LOI] Cap nhat ho so that bai!");
+        }
+
+        pause();
+    }
+
+    private void handleSendFeedback() {
+        printTitle("GUI FEEDBACK SAU CUOC HOP");
+        renderMyHistory();
+
+        int bookingId = readPositiveInt("Nhap ID booking muon danh gia: ");
+        int rating;
+        while (true) {
+            rating = readInt("Nhap so sao (1-5): ");
+            if (rating >= 1 && rating <= 5) break;
+            System.out.println("[LOI] Rating phai trong khoang 1-5!");
+        }
+
+        String comment = readNonEmpty("Nhap noi dung gop y: ");
+        boolean ok = feedbackService.sendFeedback(bookingId, rating, comment);
+
+        if (ok) System.out.println("[OK] Gui feedback thanh cong!");
+        else System.out.println("[LOI] Gui feedback that bai!");
+
+        pause();
+    }
+
+    // ========================= SUPPORT MENU =========================
     private void showSupportMenu() {
         while (true) {
-            header("MENU HO TRO (SUPPORT)");
-            line("  [1]", "Cong viec duoc phan cong");
-            line("  [2]", "Cap nhat trang thai Ready");
-            line("  [0]", "Dang xuat");
-            footer();
+            printTitle("MENU NHAN VIEN HO TRO - SUPPORT");
+            System.out.println("[1] Xem booking duoc phan cong");
+            System.out.println("[2] Cap nhat trang thai chuan bi");
+            System.out.println("[0] Dang xuat");
+            printLine();
 
-            int c = readInt("");
-            if (c == 0) { currentUser = null; break; }
-            switch (c) {
-                case 1: renderAssignedTasks(); break;
-                case 2: handleUpdatePrepStatus(); break;
+            int choice = readInt("Lua chon: ");
+            switch (choice) {
+                case 1:
+                    renderAssignedTasks();
+                    pause();
+                    break;
+                case 2:
+                    handleUpdatePrepStatus();
+                    break;
+                case 0:
+                    currentUser = null;
+                    System.out.println("Da dang xuat!");
+                    return;
+                default:
+                    System.out.println("[LOI] Lua chon khong hop le!");
             }
         }
     }
 
     private void renderAssignedTasks() {
-        System.out.println("\n--- CONG VIEC DUOC PHAN CONG ---");
+        printTitle("DANH SACH BOOKING DUOC PHAN CONG");
+
         List<Booking> tasks = bookingService.getTasksBySupportId(currentUser.getId());
-        for (Booking t : tasks) {
-            System.out.printf("Booking ID: %d | Phong: %d | Time: %s\n", t.getId(), t.getRoomId(), t.getStartTime());
+        if (tasks == null || tasks.isEmpty()) {
+            System.out.println("Ban chua duoc phan cong booking nao.");
+            return;
+        }
+
+        System.out.printf("%-5s | %-8s | %-18s | %-18s | %-12s | %-12s%n",
+                "ID", "RoomID", "Start", "End", "Status", "Prep");
+        printLine();
+
+        for (Booking b : tasks) {
+            System.out.printf("%-5d | %-8d | %-18s | %-18s | %-12s | %-12s%n",
+                    b.getId(),
+                    b.getRoomId(),
+                    safe(b.getStartTime()),
+                    safe(b.getEndTime()),
+                    safe(b.getStatus()),
+                    safe(b.getPrepStatus()));
         }
     }
 
     private void handleUpdatePrepStatus() {
-        header("CAP NHAT TRANG THAI CHUAN BI");
+        printTitle("CAP NHAT TRANG THAI CHUAN BI");
+        renderAssignedTasks();
 
-        // 1. Tự động hiện bảng danh sách công việc trước để Staff dễ nhìn ID
-        List<Booking> tasks = bookingService.getTasksBySupportId(currentUser.getId());
+        int bookingId = readPositiveInt("Nhap ID booking can cap nhat: ");
+        String prepStatus = choosePrepStatus();
 
-        if (tasks.isEmpty()) {
-            System.out.println("Ban khong co cong viec nao de cap nhat!");
-            return;
-        }
-
-        System.out.println("\n--- DANH SACH CONG VIEC CUA BAN ---");
-        System.out.printf("%-5s | %-10s | %-15s | %-15s\n", "ID", "Phong", "Thoi gian", "Hien tai");
-        System.out.println("-------------------------------------------------------------");
-        for (Booking t : tasks) {
-            System.out.printf("%-5d | %-10d | %-15s | %-15s\n",
-                    t.getId(), t.getRoomId(), t.getStartTime(), t.getPrepStatus());
-        }
-        System.out.println("-------------------------------------------------------------");
-
-        // 2. Sau khi hiện bảng mới yêu cầu nhập ID
-        int bId = readInt("\n==> Nhap ID Booking ban muon thay doi: ");
-
-        // Kiểm tra xem ID nhập vào có nằm trong danh sách tasks của Staff này không
-        boolean isValidId = tasks.stream().anyMatch(t -> t.getId() == bId);
-        if (!isValidId) {
-            System.out.println("ID khong hop le hoac khong thuoc quyen quan ly cua ban!");
-            return;
-        }
-
-        // 3. Chọn trạng thái mới
-        System.out.println("\nChon trang thai moi:");
-        System.out.println("[1] READY (Phong da san sang)");
-        System.out.println("[2] MISSING (Thieu thiet bi/Su co)");
-        System.out.println("[3] PREPARING (Dang sap xep)");
-
-        int choice = readInt("Chon (1-3): ");
-        String status = (choice == 1) ? "READY" : (choice == 2) ? "MISSING" : "PREPARING";
-
-        // 4. Gọi Service cập nhật
-        if (bookingService.updatePrepStatus(bId, status)) {
-            System.out.println("Cap nhat thanh cong! Trang thai moi: " + status);
+        boolean ok = bookingService.updatePrepStatus(bookingId, prepStatus);
+        if (ok) {
+            System.out.println("[OK] Cap nhat trang thai thanh cong!");
+            Logger.log("Support " + currentUser.getUsername() + " cap nhat prep_status booking " + bookingId + " -> " + prepStatus);
         } else {
-            System.out.println("Co loi xay ra khi luu du lieu.");
+            System.out.println("[LOI] Cap nhat that bai!");
         }
+
+        pause();
     }
 
-    // ================== CRUD ROOM & EQUIPMENT ==================
-    private void renderRoomManagement() {
-        while (true) {
-            List<Room> rooms = adminService.getAllRooms();
-            System.out.println("\n          =========== DANH SACH PHONG ===========");
-            System.out.printf("%-3s | %-15s | %-8s | %-10s | %-10s\n", "ID", "Ten phong", "Suc chua", "Vi tri", "Trang thai");
-            for (Room r : rooms) {
-                System.out.printf("%-3d | %-15s | %-8d | %-10s | %-10s\n", r.getId(), r.getRoomName(), r.getCapacity(), r.getLocation(), (r.getStatus() == 1 ? "Hoat dong" : "Bao tri"));
-            }
-            header("QUAN LY PHONG");
-            line("  [1]", "Them phong"); line("  [2]", "Sua phong"); line("  [3]", "Xoa phong"); line("  [0]", "Quay lai");
-            footer();
-            int sub = readInt("");
-            if (sub == 0) break;
-            if (sub == 1) {
-                String name = readString("Ten: ");
-                int cap = readInt("Suc chua: ");
-                String loc = readString("Vi tri: ");
-                adminService.addRoom(new Room(0, name, cap, loc, 1));
-            } else if (sub == 2) {
-                int id = readInt("ID: ");
-                String name = readString("Ten moi: ");
-                int cap = readInt("Suc chua: ");
-                String loc = readString("Vi tri: ");
-                int st = readInt("Trang thai (1/0): ");
-                adminService.updateRoom(new Room(id, name, cap, loc, st));
-            } else if (sub == 3) {
-                int idXoa = readInt("ID muon xoa: ");
-                String confirm = readString("Ban co chac chan muon xoa ID " + idXoa + "? (y/n): ");
-                if (confirm.equalsIgnoreCase("y")) {
-                    adminService.deleteRoom(idXoa);
-                    System.out.println("Da xoa!");
-                }
-            }
-        }
+    // ========================= COMMON =========================
+    private String safe(String s) {
+        return s == null ? "" : s;
     }
-
-    private void handleEquipmentManager() {
-        while (true) {
-            List<Equipment> list = adminService.getAllEquipments();
-            System.out.println("\n      =========== THIET BI ===========");
-            System.out.printf("%-3s | %-12s | %-5s | %-6s\n", "ID", "Ten", "Tong", "San co");
-            for (Equipment e : list) {
-                System.out.printf("%-3d | %-12s | %-5d | %-6d\n", e.getId(), e.getName(), e.getTotalQty(), e.getAvailableQty());
-            }
-            header("THIET BI");
-            line("  [1]", "Them"); line("  [2]", "Cap nhat"); line("  [0]", "Quay lai");
-            footer();
-            int c = readInt("");
-            if (c == 0) break;
-            if (c == 1) {
-                String name = readString("Ten: ");
-                int q = readInt("So luong: ");
-                adminService.addEquipment(new Equipment(0, name, q, q));
-            } else if (c == 2) {
-                int id = readInt("ID: ");
-                int t = readInt("Tong: ");
-                int a = readInt("San co: ");
-                adminService.updateEquipment(id, t, a);
-            }
-        }
-    }
-
-    private void handleCreateStaff() {
-        simpleHeader("TAO TAI KHOAN STAFF");
-        String u = readString("Username: ");
-        String p = readString("Password: ");
-        String name = readString("Ho ten: ");
-        String role = readString("Role (ADMIN/SUPPORT): ");
-        User staff = new User();
-        staff.setUsername(u); staff.setFullName(name); staff.setRole(role);
-        System.out.println(adminService.createStaffAccount(staff, p));
-    }
-
-    private void renderAvailableRooms() {
-        // Gọi qua adminService hoặc trực tiếp resourceDAO tùy cấu trúc của bạn
-        List<Room> rooms = adminService.getAllRooms();
-
-        System.out.println("\n" + "=".repeat(75));
-        System.out.println("                DANH SACH PHONG CO THE DAT");
-        System.out.println("=".repeat(75));
-
-        // Thêm cột %-10s cho Sức chứa
-        System.out.printf("%-5s | %-20s | %-10s | %-15s | %-10s\n",
-                "ID", "Ten phong", "Suc chua", "Vi tri", "Trang thai");
-        System.out.println("-".repeat(75));
-
-        for (Room r : rooms) {
-            String statusText = (r.getStatus() == 1) ? "Hoat dong" : "Bao tri";
-            // Chú ý: Trong DAO của bạn status là INT (1: Active, 0: Maintenance)
-            if (r.getStatus() == 1) {
-                System.out.printf("%-5d | %-20s | %-10d | %-15s | %-10s\n",
-                        r.getId(),
-                        r.getRoomName(),
-                        r.getCapacity(), // Lấy từ ResourceDAO đã có
-                        r.getLocation(),
-                        statusText);
-            }
-        }
-        System.out.println("=".repeat(75));
-    }
-    private void handleSearchRoom() {
-        String keyword = InputValidator.readNonEmptyString("Nhap ten phong muon tim: ");
-        List<Room> results = adminService.searchRooms(keyword); // Bạn cần gọi qua Service
-        if (results.isEmpty()) {
-            System.out.println("(!) Khong tim thay phong nao phu hop.");
-        } else {
-            System.out.printf("%-5s | %-15s | %-10s\n", "ID", "Ten Phong", "Suc Chua");
-            for (Room r : results) {
-                System.out.printf("%-5d | %-15s | %-10d\n", r.getId(), r.getRoomName(), r.getCapacity());
-            }
-        }
-    }
-    private void handleCancelBooking() {
-        renderMyHistory(); // Hien thi lich su de user xem ID
-        int id = InputValidator.readInt("Nhap ID Booking muon huy: ");
-        if (bookingService.cancelBooking(id, currentUser.getId())) {
-            System.out.println("[OK] Da huy yeu cau dat phong thanh cong.");
-            util.Logger.log("User " + currentUser.getUsername() + " da huy booking ID: " + id);
-        } else {
-            System.out.println("[LOI] Khong the huy (Co the do ID sai hoac phong da duoc duyet).");
-        }
-    }
-    private void handleUpdateProfile() {
-        header("CAP NHAT HO SO CA NHAN");
-        System.out.println("Ten hien tai: " + currentUser.getFullName());
-        String newName = readString("Nhap ten moi (De trong neu khong doi): ");
-
-        if (!newName.isEmpty()) {
-            currentUser.setFullName(newName);
-            // Bạn cần gọi authService.updateProfile(currentUser)
-            // Đảm bảo AuthService đã có hàm updateProfile
-            System.out.println("Cap nhat thanh cong!");
-        }
-    }
-
 }
